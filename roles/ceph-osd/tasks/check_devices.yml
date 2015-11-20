@@ -17,6 +17,36 @@
   failed_when: false
   register: ispartition
 
+- name: check the partition status of the osd disks
+  shell: "parted --script {{ item }} print > /dev/null 2>&1"
+  with_items: devices
+  changed_when: false
+  failed_when: false
+  register: osd_partition_status
+  when:
+    journal_collocation or
+    raw_multi_journal
+
+- name: check the partition status of the journal devices
+  shell: "parted --script {{ item }} print > /dev/null 2>&1"
+  with_items: raw_journal_devices
+  changed_when: false
+  failed_when: false
+  register: journal_partition_status
+  when: raw_multi_journal
+
+- name: fail on osd partition sanity check
+  fail:
+    msg: "Looks like one of your osd device as a partition issue, please make sure that GPT header and labels are sane."
+  with_items: osd_partition_status.results
+  when: (journal_collocation or raw_multi_journal) and item.rc != 0
+
+- name: fail on journal partition sanity check
+  fail:
+    msg: "Looks like one of your journal device as a partition issue, please make sure that GPT header and labels are sane."
+  with_items: journal_partition_status.results
+  when: raw_multi_journal and item.rc != 0
+
 - name: if partition named 'ceph' exists
   shell: "parted --script {{ item }} print | egrep -sq '^ 1.*ceph'"
   with_items: devices
